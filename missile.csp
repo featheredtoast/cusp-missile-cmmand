@@ -1,0 +1,799 @@
+;Authors:  Donovan Carrillo and Jeff Wong
+          .EQU      @,$0 ;defines starting point
+          .EQU      GET_NUM, $E01
+          .EQU      PUT_NUM, $E00
+          .EQU      PUT_NL, $E06
+          .EQU      PUT_STR, $E05
+          .EQU      PUT_NUM2, $E07
+
+          .EQU TIM_CNTL,      $030
+          .EQU TIM_STAT,      $030
+          .EQU TIM_VALUE,     $031
+          .EQU TIM_COUNT,     $034
+
+          .EQU INTERRUPT_ENA,           $80
+          .EQU RESET_READY_BIT,         $40
+          .EQU START_AFTER_LOAD,        $10
+          .EQU ENABLE_RESET_AND_START,  $D0
+          .EQU ENABLE_AND_RESET,        $C0
+
+          .EQU CRT_BUFFER,    $100
+;          .EQU BOTTOM_RIGHT,  $313
+          .EQU CRT_XREG,      $314
+          .EQU CRT_YREG,      $315
+          .EQU CRT_CTRL,      $316
+          .EQU CRT_DATA,      $317
+;         .EQU CRT_ROWS,      $0E
+          .EQU CRT_COLS,      $26
+          .EQU CLEAR_DISPLAY, $01
+
+          .EQU      KBD_DATA, $001
+          .EQU      KBD_CTRL, $000
+
+          LDS#      $E00
+
+; setup screen, get seed value, and resets all needed variables
+          CIE
+          LDA#      CLEAR_DISPLAY
+          OUTB      CRT_CTRL
+          LDA#      0
+          STA       STATE
+          STA       CURRKEY
+          STA       INCOM_DIR
+          STA       INCOMTIM
+          STA       OUT_X
+          STA       OUT_Y
+          STA       INCOM_Y
+
+          LDA#      32
+          STA       TEMPCHAR
+          LDA#      1
+          OUTB      CRT_XREG
+          OUTB      CRT_YREG
+          PSH#      PROMPT_LEN
+          PSH#      PROMPT
+          JSR       PUT_STR
+          ADS#      2
+          JSR       GET_NUM
+          MUL#      2779
+          ADA#      1997
+          MOD#      37
+          STA       SEED
+          STA       INCOM_X
+          CMA#      19
+          JLT       INITR ;JUMPS IF INCOMMING IS GOING RIGHT ALREADY
+          LDA#      1
+          STA       INCOM_DIR
+
+
+INITR:    LDA#      CLEAR_DISPLAY
+          OUTB      CRT_CTRL
+;          LDA#      BOTTOM_RIGHT        ; set position to lower right
+;          STA       CUR_POS
+          LDA       DELAY
+          OUTW      TIM_VALUE
+          LDA#      ENABLE_RESET_AND_START
+          OUTB      TIM_CNTL
+          LDA#      ENABLE_AND_RESET  ; enable keyboard interrupts
+          OUTB      KBD_CTRL ;keyboard control reg.
+
+; test video display
+          LDA#      14 
+          OUTB      CRT_YREG
+          LDA#      19 
+          OUTB      CRT_XREG
+          LDA#      '|'
+          OUTB      CRT_DATA
+          LDA#      13
+          STA       CUR_Y
+          OUTB      CRT_YREG
+          LDA#      19
+          STA       CUR_X
+          OUTB      CRT_XREG
+          LDA#      '+'
+          OUTB      CRT_DATA
+          LDA#      0
+          OUTB      CRT_XREG
+          OUTB      CRT_YREG 
+
+          SIE
+DO_WORK:  NOP
+          JMP       DO_WORK
+
+TISR:     PSHA
+
+          LDA       INCOMTIM
+          ADA#      1
+          STA       INCOMTIM
+          MOD#      5
+          JNE       NOINMOV
+          PSH       INCOM_DIR;5
+          PSH#      INCOM_Y;4
+          PSH#      INCOM_X;3
+          JSR       MOVE_MISSILE
+          ADS#      3
+          CMA#      0 ;IF WE DIDN'T HIT ANYTHING JUMP
+          JEQ       NOHIT
+
+          ;deal with hits here, reset shot.
+          PSH#      SEED
+          PSH#      INCOM_DIR
+          PSH#      INCOM_Y
+          PSH#      INCOM_X
+          JSR       RESTART_SHOT
+          ADS#      4
+
+
+NOHIT:    NOP
+          
+NOINMOV:  LDA#      0
+          OUTB      CRT_XREG
+          OUTB      CRT_YREG
+
+          LDA       STATE
+          CMA#      1
+          JGT       BANG
+          JNE       TEND
+          
+          PSH#      OUT_Y ;7
+          PSH#      OUT_X ;6
+          PSH       CUR_Y ;5
+          PSH       CUR_X ;4
+          JSR       SHOOT ;BANG!
+          ADS#      4
+          CMA#      1
+          JNE       NOFRIEND
+          LDA#       2
+          STA       STATE
+          JMP       BANG
+          
+          JMP       NOFRIEND
+
+DONEBANG: PSH       CUR_X; 3
+          PSH       CUR_Y; 2
+          JSR       WIPE
+          ADS#      2
+
+          LDA#	0
+          STA       STATE
+          STA       EXPTIME
+          LDA#      ENABLE_AND_RESET
+          OUTB      KBD_CTRL
+          JMP       NOFRIEND
+
+BANG:     LDA       EXPTIME
+          ADA#      1
+          STA       EXPTIME
+          MOD#      3
+          JEQ       DONEBANG
+         ; LDA       STATE
+         ; CMA#      3
+         ; JEQ       TEND
+
+          PSH#      STATE;8
+          PSH       OUT_X;7
+          PSH       OUT_Y;6
+          PSH       INCOM_X;5
+          PSH       INCOM_Y;4
+          JSR       EXPLODE
+          ADS#      5
+          CMA#      0 ;if we missed incomming, jump!
+          JEQ       TEND
+          PSH#      SEED
+          PSH#      INCOM_DIR
+          PSH#      INCOM_Y
+          PSH#      INCOM_X
+          JSR       RESTART_SHOT
+          ADS#      4
+          JMP       TEND
+          
+
+NOFRIEND: PSH       INCOM_DIR
+          PSH       INCOM_Y
+          PSH       INCOM_X
+          JSR       REDRAW_MISSILE
+          ADS#      3
+                    
+TEND:     LDA#      ENABLE_AND_RESET
+          OUTB      TIM_CNTL
+          POPA
+          IRTN
+
+; X = 3, Y = 2
+WIPE:     BGN#      0
+          LDA#      CLEAR_DISPLAY
+          OUTB      CRT_CTRL
+          LDA#      14 
+          OUTB      CRT_YREG
+          LDA#      19 
+          OUTB      CRT_XREG
+          LDA#      '|'
+          OUTB      CRT_DATA
+          LDA       !2; CUR_Y
+          OUTB      CRT_YREG
+          LDA       !3;CUR_X
+          OUTB      CRT_XREG
+          LDA#      '+'
+          OUTB      CRT_DATA
+          LDA#      0
+          OUTB      CRT_XREG
+          OUTB      CRT_YREG 
+          FIN#      0
+          RTN
+
+KISR:     PSHA
+          INB       KBD_DATA
+
+          CMA#      'q' ;want to check q first, because it works even in different states
+          JNE       NOQUIT
+          HLT
+
+          STA       CURRKEY ;checks state of current key, if it's not 0, we can't move or fire!
+          LDA       STATE
+          CMA#      0
+          JNE       KEND
+          LDA       CURRKEY
+
+
+NOQUIT:   CMA#      ' '
+          JNE       DTEST
+          PSH#      OUT_Y ;3
+          PSH#      OUT_X ;2
+          JSR       FIRE
+          ADS#      2
+          LDA#      1
+          STA       STATE
+          JMP       KEND
+
+       ;   CMA#      $1B
+        ;  JNE       KEND
+        ;  INB       KBD_DATA
+
+DTEST:    CMA#      $1B; check for dos arrows
+          JEQ       DOS
+
+KTEST:    CMA#      2
+          JLT       KEND
+          CMA#      5
+          JGT       KEND
+          JMP       AIMING
+
+DOS:      INB       KBD_DATA ;convert dos arrows to linux arrows
+          CMA#      'H'
+          JNE       DLEFT
+          LDA#      3
+DLEFT:    CMA#      'K'
+          JNE       DRIGHT
+          LDA#      4
+DRIGHT:   CMA#      'M'
+          JNE       DDOWN
+          LDA#      5
+DDOWN:    CMA#      'P'
+          JNE       KTEST
+          LDA#      2
+          JMP       KTEST
+          
+
+
+AIMING:   PSH#      TEMPCHAR ;4
+          PSH#      CUR_Y ;3
+          PSH#      CUR_X ;2
+          JSR       AIM
+          ADS#      3
+
+KEND:     LDA#      ENABLE_AND_RESET
+          OUTB      KBD_CTRL
+          POPA
+          IRTN
+
+
+AIM:      BGN#      0
+          ;CUR_Y = 3, CUR_X = 2, ADDRESSED!
+
+          CMA#      3 ; this is up arrow -- I don't know why!!!
+          JEQ       UP
+          CMA#      4 ; left arrow
+          JEQ       LEFT
+          CMA#      5 ;right arrow
+          JEQ       RIGHT
+          CMA#      2 ; down arrow 
+          JEQ       DOWN
+          JMP       AIMEND
+
+UP:       LDA*      !3 ;CUR_Y
+          CMA#      1
+          JLE       AIMEND
+          LDA*      !2 ;CUR_X
+          OUTB      CRT_XREG
+          LDA*      !3 ;CUR_Y
+          OUTB      CRT_YREG
+          LDA*      !4;       TEMPCHAR
+          OUTB      CRT_DATA
+          INB       CRT_YREG
+          SBA#      1
+          OUTB      CRT_YREG
+          STA*      !3 ;CUR_Y
+          LDA*      !2 ;CUR_X
+          OUTB      CRT_XREG
+          JMP       APRINT
+          
+LEFT:     LDA*      !2 ;CUR_X
+          CMA#      1
+          JLE       AIMEND
+          OUTB      CRT_XREG
+          LDA*      !3 ;CUR_Y
+          OUTB      CRT_YREG
+          LDA*      !4;       TEMPCHAR
+          OUTB      CRT_DATA
+          INB       CRT_XREG
+          SBA#      2
+          OUTB      CRT_XREG
+          STA*      !2 ;CUR_X
+         ; LDA*     !2 ; CUR_X
+         ; OUTB      CRT_XREG
+          JMP       APRINT
+
+RIGHT:    LDA*      !2 ;CUR_X
+          CMA#      37
+          JGE       AIMEND
+          OUTB      CRT_XREG
+          LDA*      !3 ;CUR_Y
+          OUTB      CRT_YREG
+          LDA*      !4;       TEMPCHAR
+          OUTB      CRT_DATA
+
+          INB       CRT_XREG
+          STA*      !2 ;CUR_X
+          ;LDA*      !2 ;CUR_X
+          ;OUTB      CRT_XREG
+          JMP       APRINT
+
+DOWN:     LDA*      !3 ;CUR_Y
+          CMA#      13
+          JGE       AIMEND
+          LDA*      !2 ;CUR_X
+          OUTB      CRT_XREG
+          LDA*      !3 ;CUR_Y
+          OUTB      CRT_YREG
+          LDA*      !4;       TEMPCHAR 
+          OUTB      CRT_DATA
+          INB       CRT_YREG
+          ADA#      1
+          OUTB      CRT_YREG
+          STA*      !3 ;CUR_Y
+          LDA*      !2 ;CUR_X
+          OUTB      CRT_XREG
+
+APRINT:   LDA*      !3
+          SBA#      1
+          MUL#      38
+          ADA*      !2
+          SBA#      1
+          TAX
+          INB+      CRT_BUFFER
+          STA*      !4;       TEMPCHAR
+          LDA#      '+'
+          OUTB      CRT_DATA
+          LDA#      0
+          OUTB      CRT_YREG
+          OUTB      CRT_XREG
+          JMP       AIMEND
+
+AIMEND:   FIN#      0
+          RTN
+
+FIRE:     BGN#      0
+
+;         now we just need to get a shot over turret
+;         X IS 2, Y IS 3
+          LDA#      13
+          OUTB      CRT_YREG
+          LDA#      19
+          OUTB      CRT_XREG
+          LDA#      '.'
+          OUTB      CRT_DATA
+          LDA#      0
+          OUTB      CRT_XREG
+          OUTB      CRT_YREG
+          
+          LDA#      19
+          STA*      !2 ;OUT_X
+          LDA#      13
+          STA*      !3 ;OUT_Y
+
+          FIN#      0
+          RTN
+
+SHOOT:    BGN#      2
+          ;0 IS RISE, 1 IS RUN
+          ;4 IS X, 5 IS Y, VALUES 6 IS &OUT_X, 7 &OUT_Y
+          ;FIRE ZE MISSILES
+          ;BUT I AM LE TIRED
+          ;WELL, HAVE A NAP, THEN FIRE ZE MISSILES!
+
+          ;RISE OVER RUN
+          LDA#      0
+          STA       !0
+
+          LDA*      !7
+          SBA       !5
+          STA       !0
+
+           LDA       !4 ;
+           SBA*      !6 ;subtract turret position
+           STA       !1
+           CMA#      0
+           JNE       SKIP ;skips vertical checker
+          CMA      !0
+          JEQ       ASPLODE ;explodes.
+          JNE       VERT
+
+ASPLODE:  LDA#      2 ;asplodie stage
+          STA       STATE
+          JMP       SHOTEND
+
+
+
+SKIP:     LDA       !0
+          DIV       !1 ;gives rise over run
+          JGE       NONEG ;TAKE ABSOLUTE VALUE!!!
+          NEGA
+NONEG:    CMA#      1
+          JLT       HORIZ
+          JEQ       ANGLE
+          JMP       VERT
+          
+VERT:     LDA*      !7
+         ; OUTB      CRT_YREG
+          SBA#      1
+          CMA#      0
+          JEQ       NEED_DIE
+          OUTB      CRT_YREG
+          STA*      !7 ;CUR_Y
+          LDA*      !6 ;CUR_X
+          OUTB      CRT_XREG
+          LDA#      '.'
+          OUTB      CRT_DATA
+          LDA#      0
+          OUTB      CRT_YREG
+          OUTB      CRT_XREG
+          JMP       SHOTEND
+
+ANGLE:    LDA*      !7
+          SBA#      1
+          CMA#      0
+          JEQ       NEED_DIE
+          OUTB      CRT_YREG
+          STA*      !7; CUR_Y
+
+          LDA       !1
+          CMA#      0
+          JLT       LANGLE
+
+          LDA*      !6 ; move x to the right
+          ADA#      1
+          JMP       ANGPRINT
+
+LANGLE:   LDA*      !6
+          SBA#      1
+        
+ANGPRINT: STA*      !6 ;CUR_X
+          OUTB      CRT_XREG
+          LDA#      '.'
+          OUTB      CRT_DATA
+          LDA#      0
+          OUTB      CRT_YREG
+          OUTB      CRT_XREG
+          JMP       SHOTEND
+
+
+HORIZ:    LDA       !1
+          CMA#      0
+          JLT       LHORIZ
+
+          LDA*      !6;x going right again...
+          ADA#      1
+          JMP       HPRINT
+
+LHORIZ:   LDA*      !6; and x left here...
+          SBA#      1
+
+HPRINT:   OUTB      CRT_XREG
+          STA*      !6 ;CUR_X
+
+          LDA*      !7 ;CUR_Y
+          OUTB      CRT_YREG
+          LDA#      '.'
+          OUTB      CRT_DATA
+          LDA#      0
+          OUTB      CRT_YREG
+          OUTB      CRT_XREG
+          JMP       SHOTEND
+
+NEED_DIE: LDA#      1
+          JMP       SHOTEND
+
+
+SHOTEND:  FIN#      2
+          RTN
+
+EXPLODE:  BGN#      2
+;         STATE = 8, OUT_X=7,  OUT_Y=6,  INCOM_X=5,  INCOM_Y=4
+          ;
+          LDA#      0
+          STA       !0; initialize flag
+          STA       !1 ;incomming hit flag (0 no hit, 1 hit: will return in accm)
+
+          LDA       !7 ;top star
+          OUTB      CRT_XREG
+          LDA       !6
+          SBA#      1
+          CMA#      0
+          JEQ       CENTERL
+          OUTB      CRT_YREG
+          LDA#      '*'
+          OUTB      CRT_DATA
+
+CENTERL:  LDA       !7 ;center row
+          SBA#      1
+          CMA#      0
+          JNE       CENTER
+          ADA#      1
+          STA       !0 ; FLAG... don't print third star
+CENTER:   OUTB      CRT_XREG
+          LDA       !6
+          OUTB      CRT_YREG
+          LDA#      '*'
+          OUTB      CRT_DATA
+          OUTB      CRT_DATA
+          INB       CRT_XREG
+          CMA#      38
+          JGT       BOTTOM
+          LDA       !0
+          CMA#      0
+          JNE       BOTTOM
+          LDA#      '*'
+          OUTB      CRT_DATA
+
+BOTTOM:   LDA       !7 ;bottom star
+          OUTB      CRT_XREG
+          LDA       !6
+          ADA#      1
+          OUTB      CRT_YREG
+          CMA#      14
+          JGE       EXEND
+          LDA#      '*'
+          OUTB      CRT_DATA
+
+EXEND:    LDA#      3
+          STA*      !8
+          LDA#      0
+          OUTB      KBD_CTRL
+          OUTB      CRT_YREG
+          OUTB      CRT_XREG
+
+;now check if a missile was hit (!1 will be 2 if both hit, 1 if one hit, and 0 if none hit. only want the 2)
+
+          LDA       !7 ;outx
+          SBA#      1
+          CMA       !5
+          JGT       NO_X
+          ADA#      2
+          CMA       !5
+          JLT       NO_X
+          LDA#      1
+          STA       !1
+
+NO_X:     LDA       !6 ;check outy
+          SBA#      1
+          CMA       !4
+          JGT       NO_Y
+          ADA#      2
+          CMA       !4
+          JLT       NO_Y
+          LDA       !1
+          ADA#      1
+          STA       !1
+
+NO_Y:     LDA       !1
+          CMA#      2 ;if both coordinates were hit
+          JNE       NO_HIT
+          ;check corners
+          LDA       !5
+          CMA       !7
+          JEQ       HITTING
+          LDA       !4
+          CMA       !6
+          JEQ       HITTING
+NO_HIT:   LDA#      0 
+          JMP       HITTN_END
+HITTING:   LDA#      1
+HITTN_END: FIN#      2
+          RTN
+
+MOVE_MISSILE: BGN#      1 ;acc: 1 if something hit, 0 if not hit.
+          ;3 IS INCOM_X, 4 IS INCOM_Y, 5 IS INCOM DIR
+          LDA#      0
+          STA       !0 ;is flag to see if turret is hit
+          LDA       !5
+          CMA#      0
+          JEQ       INCOM_RIGHT
+;INCOM_LEFT
+          LDA*      !3
+          SBA#      1
+          STA*      !3
+          LDA*      !4
+          ADA#      1
+          STA*      !4
+          CMA#      14
+          JGE       HIT
+          OUTB      CRT_YREG  
+          LDA*      !3
+          OUTB      CRT_XREG
+          LDA#       '/'
+          OUTB      CRT_DATA
+          JMP       ENDINCOM
+INCOM_RIGHT: LDA*    !3
+          ADA#      1
+          STA*       !3
+          LDA*       !4
+          ADA#      1
+          STA*       !4
+          CMA#      14
+          JGE       HIT
+          OUTB      CRT_YREG
+          LDA*       !3
+          OUTB      CRT_XREG
+          LDA#       92 ;'\'
+          OUTB      CRT_DATA
+          JMP       ENDINCOM
+
+HIT:      LDA#      1
+          JMP       FININCOM
+
+ENDINCOM: LDA#      0
+
+FININCOM: FIN#      1
+          RTN
+
+RESTART_SHOT: BGN# 0
+          ;2 IS INCOM_X, 3 IS INCOM_Y, 4 IS INCOM_DIR, 5 IS SEED
+
+          LDA*      !4
+          CMA#      0 ;if going right
+          JEQ       RESTART_RIGHT
+RESTART_LEFT: LDA*  !3
+          CMA#      0
+          JEQ       DONE_ERASE
+          SBA#      1
+          STA*      !3
+          OUTB      CRT_YREG
+          LDA*      !2
+          ADA#      1
+          STA*      !2
+          OUTB      CRT_XREG
+          LDA#      ' '
+          OUTB      CRT_DATA
+          JMP       RESTART_LEFT
+
+
+RESTART_RIGHT: LDA* !3
+          CMA#      0
+          JEQ       DONE_ERASE
+          SBA#      1
+          STA*      !3
+          OUTB      CRT_YREG
+          LDA*      !2
+          SBA#      1
+          STA*      !2
+          OUTB      CRT_XREG
+          LDA#      ' '
+          OUTB      CRT_DATA
+          JMP       RESTART_RIGHT
+
+DONE_ERASE: LDA*    !5 ;seed
+          MUL#      2779
+          ADA#      1997
+          MOD#      2048
+          STA*      !5
+          MOD#      3
+          CMA#      0
+          JEQ       RESHOOT
+          LDA#      13
+          STA*      !3
+          LDA#      0
+          STA*      !2
+          JMP       END_RESTART
+RESHOOT:  LDA*      !5
+          MUL#      2779
+          ADA#      1997
+          MOD#      2048
+          MOD#      37
+          STA*      !5 ;restarts seed
+          STA*      !2 ;restarts x value too!
+          CMA#      19
+          JLE       START_RIGHT
+          LDA#      1
+          JMP       END_RESTART
+
+START_RIGHT: LDA#   0
+END_RESTART:  STA*      !4
+
+          LDA#      0
+          OUTB      CRT_XREG
+          OUTB      CRT_YREG
+          FIN# 0
+          RTN
+
+REDRAW_MISSILE: BGN# 2
+          ;0 is copy of x, 1 is copy of y, 4 IS INCOM_X, 5 IS INCOM_Y, 6 IS INCOM_DIR
+          LDA       !4
+          STA       !0
+          OUTB      CRT_XREG
+          LDA       !5
+          STA       !1
+          OUTB      CRT_YREG
+
+          LDA       !6
+          CMA#      0 ;if going right
+          JEQ       REDRAW_RIGHT
+REDRAW_LEFT: LDA#   '/'
+          OUTB      CRT_DATA
+          LDA   !1
+          CMA#      0
+          JEQ       DONE_REDRAW
+          SBA#      1
+          STA       !1
+          OUTB      CRT_YREG
+          LDA       !0
+          ADA#      1
+          STA       !0
+          OUTB      CRT_XREG
+          JMP       REDRAW_LEFT
+
+
+REDRAW_RIGHT: LDA#  92
+          OUTB      CRT_DATA
+          LDA  !1
+          CMA#      0
+          JEQ       DONE_REDRAW
+          SBA#      1
+          STA       !1
+          OUTB      CRT_YREG
+          LDA       !0
+          SBA#      1
+          STA       !0
+          OUTB      CRT_XREG
+          JMP       REDRAW_RIGHT
+
+DONE_REDRAW: LDA#      0
+          OUTB      CRT_XREG
+          OUTB      CRT_YREG
+          FIN# 2
+          RTN
+
+;variables
+CUR_X:    .WORD     0
+CUR_Y:    .WORD     0
+PROMPT:   .CHAR     'Please enter a seed', PROMPT_LEN
+SEED:     .WORD     0
+;CUR_POS:  .WORD     0
+DELAY:    .WORD     200000
+EXPTIME:  .WORD     0
+INCOMTIM: .WORD     0 ;MOD5 to get movement of enemies
+INCOM_X:  .WORD     0
+INCOM_Y:  .WORD     0
+INCOM_DIR: .WORD     0 ;0 IS RIGHT, 1 IS LEFT
+OUT_X:    .WORD     0
+OUT_Y:    .WORD     0
+
+STATE:    .WORD     0 ;0=AIM, 1=FIRE, 2=EXPLODE, 3=EXPLODING
+TURSLOPE: .WORD     0 ;if positive, shoot right, neg shoots left. note: vertial issues with division
+CURRKEY:  .WORD     0 ;current keystroke we're dealing with in KSR
+TEMPCHAR: .WORD     32
+
+          .EQU      @,$FFB    ; timer interrupt vector
+          .WORD     TISR       ; set vector interrupt to TISR
+
+          .EQU      @,$FF8
+          .WORD     KISR

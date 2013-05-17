@@ -1,0 +1,943 @@
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page   1
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+   1.                   ;Authors:  Donovan Carrillo and Jeff Wong 
+   2.                             .EQU      @,$0 ;defines starting point 
+   3.                             .EQU      GET_NUM, $E01 
+   4.                             .EQU      PUT_NUM, $E00 
+   5.                             .EQU      PUT_NL, $E06 
+   6.                             .EQU      PUT_STR, $E05 
+   7.                             .EQU      PUT_NUM2, $E07 
+   8.                    
+   9.                             .EQU TIM_CNTL,      $030 
+  10.                             .EQU TIM_STAT,      $030 
+  11.                             .EQU TIM_VALUE,     $031 
+  12.                             .EQU TIM_COUNT,     $034 
+  13.                    
+  14.                             .EQU INTERRUPT_ENA,           $80 
+  15.                             .EQU RESET_READY_BIT,         $40 
+  16.                             .EQU START_AFTER_LOAD,        $10 
+  17.                             .EQU ENABLE_RESET_AND_START,  $D0 
+  18.                             .EQU ENABLE_AND_RESET,        $C0 
+  19.                    
+  20.                             .EQU CRT_BUFFER,    $100 
+  21.                   ;          .EQU BOTTOM_RIGHT,  $313 
+  22.                             .EQU CRT_XREG,      $314 
+  23.                             .EQU CRT_YREG,      $315 
+  24.                             .EQU CRT_CTRL,      $316 
+  25.                             .EQU CRT_DATA,      $317 
+  26.                   ;         .EQU CRT_ROWS,      $0E 
+  27.                             .EQU CRT_COLS,      $26 
+  28.                             .EQU CLEAR_DISPLAY, $01 
+  29.                    
+  30.                             .EQU      KBD_DATA, $001 
+  31.                             .EQU      KBD_CTRL, $000 
+  32.                    
+  33.    000   020E00             LDS#      $E00 
+  34.                    
+  35.                   ; setup screen, get seed value, and resets all needed variables 
+  36.    001   FFF033             CIE 
+  37.    002   000001             LDA#      CLEAR_DISPLAY 
+  38.    003   712316             OUTB      CRT_CTRL 
+  39.    004   000000             LDA#      0 
+  40.    005   042273             STA       STATE 
+  41.    006   042275             STA       CURRKEY 
+  42.    007   042270             STA       INCOM_DIR 
+  43.    008   04226D             STA       INCOMTIM 
+  44.    009   042271             STA       OUT_X 
+  45.    00A   042272             STA       OUT_Y 
+  46.    00B   04226F             STA       INCOM_Y 
+  47.                    
+  48.    00C   000020             LDA#      32 
+  49.    00D   042276             STA       TEMPCHAR 
+  50.    00E   000001             LDA#      1 
+  51.    00F   712314             OUTB      CRT_XREG 
+  52.    010   712315             OUTB      CRT_YREG 
+  53.    011   080013             PSH#      PROMPT_LEN 
+  54.    012   080263             PSH#      PROMPT 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page   2
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+  55.    013   412E05             JSR       PUT_STR 
+  56.    014   120002             ADS#      2 
+  57.    015   412E01             JSR       GET_NUM 
+  58.    016   180ADB             MUL#      2779 
+  59.    017   1007CD             ADA#      1997 
+  60.    018   1A0025             MOD#      37 
+  61.    019   04226A             STA       SEED 
+  62.    01A   04226E             STA       INCOM_X 
+  63.    01B   200013             CMA#      19 
+  64.    01C   4A201F             JLT       INITR ;JUMPS IF INCOMMING IS GOING RIGHT ALREADY 
+  65.    01D   000001             LDA#      1 
+  66.    01E   042270             STA       INCOM_DIR 
+  67.                    
+  68.                    
+  69.    01F   000001   INITR:    LDA#      CLEAR_DISPLAY 
+  70.    020   712316             OUTB      CRT_CTRL 
+  71.                   ;          LDA#      BOTTOM_RIGHT        ; set position to lower right 
+  72.                   ;          STA       CUR_POS 
+  73.    021   00226B             LDA       DELAY 
+  74.    022   732031             OUTW      TIM_VALUE 
+  75.    023   0000D0             LDA#      ENABLE_RESET_AND_START 
+  76.    024   712030             OUTB      TIM_CNTL 
+  77.    025   0000C0             LDA#      ENABLE_AND_RESET  ; enable keyboard interrupts 
+  78.    026   712000             OUTB      KBD_CTRL ;keyboard control reg. 
+  79.                    
+  80.                   ; test video display 
+  81.    027   00000E             LDA#      14  
+  82.    028   712315             OUTB      CRT_YREG 
+  83.    029   000013             LDA#      19  
+  84.    02A   712314             OUTB      CRT_XREG 
+  85.    02B   00007C             LDA#      '|' 
+  86.    02C   712317             OUTB      CRT_DATA 
+  87.    02D   00000D             LDA#      13 
+  88.    02E   042262             STA       CUR_Y 
+  89.    02F   712315             OUTB      CRT_YREG 
+  90.    030   000013             LDA#      19 
+  91.    031   042261             STA       CUR_X 
+  92.    032   712314             OUTB      CRT_XREG 
+  93.    033   00002B             LDA#      '+' 
+  94.    034   712317             OUTB      CRT_DATA 
+  95.    035   000000             LDA#      0 
+  96.    036   712314             OUTB      CRT_XREG 
+  97.    037   712315             OUTB      CRT_YREG  
+  98.                    
+  99.    038   FFF032             SIE 
+ 100.    039   FFF038   DO_WORK:  NOP 
+ 101.    03A   402039             JMP       DO_WORK 
+ 102.                    
+ 103.    03B   FFF010   TISR:     PSHA 
+ 104.                    
+ 105.    03C   00226D             LDA       INCOMTIM 
+ 106.    03D   100001             ADA#      1 
+ 107.    03E   04226D             STA       INCOMTIM 
+ 108.    03F   1A0005             MOD#      5 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page   3
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 109.    040   49204F             JNE       NOINMOV 
+ 110.    041   082270             PSH       INCOM_DIR;5 
+ 111.    042   08026F             PSH#      INCOM_Y;4 
+ 112.    043   08026E             PSH#      INCOM_X;3 
+ 113.    044   4121D4             JSR       MOVE_MISSILE 
+ 114.    045   120003             ADS#      3 
+ 115.    046   200000             CMA#      0 ;IF WE DIDN'T HIT ANYTHING JUMP 
+ 116.    047   48204E             JEQ       NOHIT 
+ 117.                    
+ 118.                             ;deal with hits here, reset shot. 
+ 119.    048   08026A             PSH#      SEED 
+ 120.    049   080270             PSH#      INCOM_DIR 
+ 121.    04A   08026F             PSH#      INCOM_Y 
+ 122.    04B   08026E             PSH#      INCOM_X 
+ 123.    04C   4121FB             JSR       RESTART_SHOT 
+ 124.    04D   120004             ADS#      4 
+ 125.                    
+ 126.                    
+ 127.    04E   FFF038   NOHIT:    NOP 
+ 128.                              
+ 129.    04F   000000   NOINMOV:  LDA#      0 
+ 130.    050   712314             OUTB      CRT_XREG 
+ 131.    051   712315             OUTB      CRT_YREG 
+ 132.                    
+ 133.    052   002273             LDA       STATE 
+ 134.    053   200001             CMA#      1 
+ 135.    054   4D206C             JGT       BANG 
+ 136.    055   492086             JNE       TEND 
+ 137.                              
+ 138.    056   080272             PSH#      OUT_Y ;7 
+ 139.    057   080271             PSH#      OUT_X ;6 
+ 140.    058   082262             PSH       CUR_Y ;5 
+ 141.    059   082261             PSH       CUR_X ;4 
+ 142.    05A   412130             JSR       SHOOT ;BANG! 
+ 143.    05B   120004             ADS#      4 
+ 144.    05C   200001             CMA#      1 
+ 145.    05D   492081             JNE       NOFRIEND 
+ 146.    05E   000002             LDA#       2 
+ 147.    05F   042273             STA       STATE 
+ 148.    060   40206C             JMP       BANG 
+ 149.                              
+ 150.    061   402081             JMP       NOFRIEND 
+ 151.                    
+ 152.    062   082261   DONEBANG: PSH       CUR_X; 3 
+ 153.    063   082262             PSH       CUR_Y; 2 
+ 154.    064   41208A             JSR       WIPE 
+ 155.    065   120002             ADS#      2 
+ 156.                    
+ 157.    066   000000             LDA#	0 
+ 158.    067   042273             STA       STATE 
+ 159.    068   04226C             STA       EXPTIME 
+ 160.    069   0000C0             LDA#      ENABLE_AND_RESET 
+ 161.    06A   712000             OUTB      KBD_CTRL 
+ 162.    06B   402081             JMP       NOFRIEND 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page   4
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 163.                    
+ 164.    06C   00226C   BANG:     LDA       EXPTIME 
+ 165.    06D   100001             ADA#      1 
+ 166.    06E   04226C             STA       EXPTIME 
+ 167.    06F   1A0003             MOD#      3 
+ 168.    070   482062             JEQ       DONEBANG 
+ 169.                            ; LDA       STATE 
+ 170.                            ; CMA#      3 
+ 171.                            ; JEQ       TEND 
+ 172.                    
+ 173.    071   080273             PSH#      STATE;8 
+ 174.    072   082271             PSH       OUT_X;7 
+ 175.    073   082272             PSH       OUT_Y;6 
+ 176.    074   08226E             PSH       INCOM_X;5 
+ 177.    075   08226F             PSH       INCOM_Y;4 
+ 178.    076   412183             JSR       EXPLODE 
+ 179.    077   120005             ADS#      5 
+ 180.    078   200000             CMA#      0 ;if we missed incomming, jump! 
+ 181.    079   482086             JEQ       TEND 
+ 182.    07A   08026A             PSH#      SEED 
+ 183.    07B   080270             PSH#      INCOM_DIR 
+ 184.    07C   08026F             PSH#      INCOM_Y 
+ 185.    07D   08026E             PSH#      INCOM_X 
+ 186.    07E   4121FB             JSR       RESTART_SHOT 
+ 187.    07F   120004             ADS#      4 
+ 188.    080   402086             JMP       TEND 
+ 189.                              
+ 190.                    
+ 191.    081   082270   NOFRIEND: PSH       INCOM_DIR 
+ 192.    082   08226F             PSH       INCOM_Y 
+ 193.    083   08226E             PSH       INCOM_X 
+ 194.    084   412238             JSR       REDRAW_MISSILE 
+ 195.    085   120003             ADS#      3 
+ 196.                                        
+ 197.    086   0000C0   TEND:     LDA#      ENABLE_AND_RESET 
+ 198.    087   712030             OUTB      TIM_CNTL 
+ 199.    088   FFF013             POPA 
+ 200.    089   FFF041             IRTN 
+ 201.                    
+ 202.                   ; X = 3, Y = 2 
+ 203.    08A   680000   WIPE:     BGN#      0 
+ 204.    08B   000001             LDA#      CLEAR_DISPLAY 
+ 205.    08C   712316             OUTB      CRT_CTRL 
+ 206.    08D   00000E             LDA#      14  
+ 207.    08E   712315             OUTB      CRT_YREG 
+ 208.    08F   000013             LDA#      19  
+ 209.    090   712314             OUTB      CRT_XREG 
+ 210.    091   00007C             LDA#      '|' 
+ 211.    092   712317             OUTB      CRT_DATA 
+ 212.    093   003002             LDA       !2; CUR_Y 
+ 213.    094   712315             OUTB      CRT_YREG 
+ 214.    095   003003             LDA       !3;CUR_X 
+ 215.    096   712314             OUTB      CRT_XREG 
+ 216.    097   00002B             LDA#      '+' 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page   5
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 217.    098   712317             OUTB      CRT_DATA 
+ 218.    099   000000             LDA#      0 
+ 219.    09A   712314             OUTB      CRT_XREG 
+ 220.    09B   712315             OUTB      CRT_YREG  
+ 221.    09C   690000             FIN#      0 
+ 222.    09D   FFF040             RTN 
+ 223.                    
+ 224.    09E   FFF010   KISR:     PSHA 
+ 225.    09F   702001             INB       KBD_DATA 
+ 226.                    
+ 227.    0A0   200071             CMA#      'q' ;want to check q first, because it works even in different states 
+ 228.    0A1   4920A8             JNE       NOQUIT 
+ 229.    0A2   FFFFFF             HLT 
+ 230.                    
+ 231.    0A3   042275             STA       CURRKEY ;checks state of current key, if it's not 0, we can't move or fire! 
+ 232.    0A4   002273             LDA       STATE 
+ 233.    0A5   200000             CMA#      0 
+ 234.    0A6   4920CB             JNE       KEND 
+ 235.    0A7   002275             LDA       CURRKEY 
+ 236.                    
+ 237.                    
+ 238.    0A8   200020   NOQUIT:   CMA#      ' ' 
+ 239.    0A9   4920B1             JNE       DTEST 
+ 240.    0AA   080272             PSH#      OUT_Y ;3 
+ 241.    0AB   080271             PSH#      OUT_X ;2 
+ 242.    0AC   412120             JSR       FIRE 
+ 243.    0AD   120002             ADS#      2 
+ 244.    0AE   000001             LDA#      1 
+ 245.    0AF   042273             STA       STATE 
+ 246.    0B0   4020CB             JMP       KEND 
+ 247.                    
+ 248.                          ;   CMA#      $1B 
+ 249.                           ;  JNE       KEND 
+ 250.                           ;  INB       KBD_DATA 
+ 251.                    
+ 252.    0B1   20001B   DTEST:    CMA#      $1B; check for dos arrows 
+ 253.    0B2   4820B8             JEQ       DOS 
+ 254.                    
+ 255.    0B3   200002   KTEST:    CMA#      2 
+ 256.    0B4   4A20CB             JLT       KEND 
+ 257.    0B5   200005             CMA#      5 
+ 258.    0B6   4D20CB             JGT       KEND 
+ 259.    0B7   4020C6             JMP       AIMING 
+ 260.                    
+ 261.    0B8   702001   DOS:      INB       KBD_DATA ;convert dos arrows to linux arrows 
+ 262.    0B9   200048             CMA#      'H' 
+ 263.    0BA   4920BC             JNE       DLEFT 
+ 264.    0BB   000003             LDA#      3 
+ 265.    0BC   20004B   DLEFT:    CMA#      'K' 
+ 266.    0BD   4920BF             JNE       DRIGHT 
+ 267.    0BE   000004             LDA#      4 
+ 268.    0BF   20004D   DRIGHT:   CMA#      'M' 
+ 269.    0C0   4920C2             JNE       DDOWN 
+ 270.    0C1   000005             LDA#      5 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page   6
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 271.    0C2   200050   DDOWN:    CMA#      'P' 
+ 272.    0C3   4920B3             JNE       KTEST 
+ 273.    0C4   000002             LDA#      2 
+ 274.    0C5   4020B3             JMP       KTEST 
+ 275.                              
+ 276.                    
+ 277.                    
+ 278.    0C6   080276   AIMING:   PSH#      TEMPCHAR ;4 
+ 279.    0C7   080262             PSH#      CUR_Y ;3 
+ 280.    0C8   080261             PSH#      CUR_X ;2 
+ 281.    0C9   4120CF             JSR       AIM 
+ 282.    0CA   120003             ADS#      3 
+ 283.                    
+ 284.    0CB   0000C0   KEND:     LDA#      ENABLE_AND_RESET 
+ 285.    0CC   712000             OUTB      KBD_CTRL 
+ 286.    0CD   FFF013             POPA 
+ 287.    0CE   FFF041             IRTN 
+ 288.                    
+ 289.                    
+ 290.    0CF   680000   AIM:      BGN#      0 
+ 291.                             ;CUR_Y = 3, CUR_X = 2, ADDRESSED! 
+ 292.                    
+ 293.    0D0   200003             CMA#      3 ; this is up arrow -- I don't know why!!! 
+ 294.    0D1   4820D9             JEQ       UP 
+ 295.    0D2   200004             CMA#      4 ; left arrow 
+ 296.    0D3   4820E9             JEQ       LEFT 
+ 297.    0D4   200005             CMA#      5 ;right arrow 
+ 298.    0D5   4820F6             JEQ       RIGHT 
+ 299.    0D6   200002             CMA#      2 ; down arrow  
+ 300.    0D7   482101             JEQ       DOWN 
+ 301.    0D8   40211E             JMP       AIMEND 
+ 302.                    
+ 303.    0D9   007003   UP:       LDA*      !3 ;CUR_Y 
+ 304.    0DA   200001             CMA#      1 
+ 305.    0DB   4C211E             JLE       AIMEND 
+ 306.    0DC   007002             LDA*      !2 ;CUR_X 
+ 307.    0DD   712314             OUTB      CRT_XREG 
+ 308.    0DE   007003             LDA*      !3 ;CUR_Y 
+ 309.    0DF   712315             OUTB      CRT_YREG 
+ 310.    0E0   007004             LDA*      !4;       TEMPCHAR 
+ 311.    0E1   712317             OUTB      CRT_DATA 
+ 312.    0E2   702315             INB       CRT_YREG 
+ 313.    0E3   140001             SBA#      1 
+ 314.    0E4   712315             OUTB      CRT_YREG 
+ 315.    0E5   047003             STA*      !3 ;CUR_Y 
+ 316.    0E6   007002             LDA*      !2 ;CUR_X 
+ 317.    0E7   712314             OUTB      CRT_XREG 
+ 318.    0E8   402110             JMP       APRINT 
+ 319.                              
+ 320.    0E9   007002   LEFT:     LDA*      !2 ;CUR_X 
+ 321.    0EA   200001             CMA#      1 
+ 322.    0EB   4C211E             JLE       AIMEND 
+ 323.    0EC   712314             OUTB      CRT_XREG 
+ 324.    0ED   007003             LDA*      !3 ;CUR_Y 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page   7
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 325.    0EE   712315             OUTB      CRT_YREG 
+ 326.    0EF   007004             LDA*      !4;       TEMPCHAR 
+ 327.    0F0   712317             OUTB      CRT_DATA 
+ 328.    0F1   702314             INB       CRT_XREG 
+ 329.    0F2   140002             SBA#      2 
+ 330.    0F3   712314             OUTB      CRT_XREG 
+ 331.    0F4   047002             STA*      !2 ;CUR_X 
+ 332.                            ; LDA*     !2 ; CUR_X 
+ 333.                            ; OUTB      CRT_XREG 
+ 334.    0F5   402110             JMP       APRINT 
+ 335.                    
+ 336.    0F6   007002   RIGHT:    LDA*      !2 ;CUR_X 
+ 337.    0F7   200025             CMA#      37 
+ 338.    0F8   4B211E             JGE       AIMEND 
+ 339.    0F9   712314             OUTB      CRT_XREG 
+ 340.    0FA   007003             LDA*      !3 ;CUR_Y 
+ 341.    0FB   712315             OUTB      CRT_YREG 
+ 342.    0FC   007004             LDA*      !4;       TEMPCHAR 
+ 343.    0FD   712317             OUTB      CRT_DATA 
+ 344.                    
+ 345.    0FE   702314             INB       CRT_XREG 
+ 346.    0FF   047002             STA*      !2 ;CUR_X 
+ 347.                             ;LDA*      !2 ;CUR_X 
+ 348.                             ;OUTB      CRT_XREG 
+ 349.    100   402110             JMP       APRINT 
+ 350.                    
+ 351.    101   007003   DOWN:     LDA*      !3 ;CUR_Y 
+ 352.    102   20000D             CMA#      13 
+ 353.    103   4B211E             JGE       AIMEND 
+ 354.    104   007002             LDA*      !2 ;CUR_X 
+ 355.    105   712314             OUTB      CRT_XREG 
+ 356.    106   007003             LDA*      !3 ;CUR_Y 
+ 357.    107   712315             OUTB      CRT_YREG 
+ 358.    108   007004             LDA*      !4;       TEMPCHAR  
+ 359.    109   712317             OUTB      CRT_DATA 
+ 360.    10A   702315             INB       CRT_YREG 
+ 361.    10B   100001             ADA#      1 
+ 362.    10C   712315             OUTB      CRT_YREG 
+ 363.    10D   047003             STA*      !3 ;CUR_Y 
+ 364.    10E   007002             LDA*      !2 ;CUR_X 
+ 365.    10F   712314             OUTB      CRT_XREG 
+ 366.                    
+ 367.    110   007003   APRINT:   LDA*      !3 
+ 368.    111   140001             SBA#      1 
+ 369.    112   180026             MUL#      38 
+ 370.    113   107002             ADA*      !2 
+ 371.    114   140001             SBA#      1 
+ 372.    115   FFF000             TAX 
+ 373.    116   704100             INB+      CRT_BUFFER 
+ 374.    117   047004             STA*      !4;       TEMPCHAR 
+ 375.    118   00002B             LDA#      '+' 
+ 376.    119   712317             OUTB      CRT_DATA 
+ 377.    11A   000000             LDA#      0 
+ 378.    11B   712315             OUTB      CRT_YREG 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page   8
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 379.    11C   712314             OUTB      CRT_XREG 
+ 380.    11D   40211E             JMP       AIMEND 
+ 381.                    
+ 382.    11E   690000   AIMEND:   FIN#      0 
+ 383.    11F   FFF040             RTN 
+ 384.                    
+ 385.    120   680000   FIRE:     BGN#      0 
+ 386.                    
+ 387.                   ;         now we just need to get a shot over turret 
+ 388.                   ;         X IS 2, Y IS 3 
+ 389.    121   00000D             LDA#      13 
+ 390.    122   712315             OUTB      CRT_YREG 
+ 391.    123   000013             LDA#      19 
+ 392.    124   712314             OUTB      CRT_XREG 
+ 393.    125   00002E             LDA#      '.' 
+ 394.    126   712317             OUTB      CRT_DATA 
+ 395.    127   000000             LDA#      0 
+ 396.    128   712314             OUTB      CRT_XREG 
+ 397.    129   712315             OUTB      CRT_YREG 
+ 398.                              
+ 399.    12A   000013             LDA#      19 
+ 400.    12B   047002             STA*      !2 ;OUT_X 
+ 401.    12C   00000D             LDA#      13 
+ 402.    12D   047003             STA*      !3 ;OUT_Y 
+ 403.                    
+ 404.    12E   690000             FIN#      0 
+ 405.    12F   FFF040             RTN 
+ 406.                    
+ 407.    130   680002   SHOOT:    BGN#      2 
+ 408.                             ;0 IS RISE, 1 IS RUN 
+ 409.                             ;4 IS X, 5 IS Y, VALUES 6 IS &OUT_X, 7 &OUT_Y 
+ 410.                             ;FIRE ZE MISSILES 
+ 411.                             ;BUT I AM LE TIRED 
+ 412.                             ;WELL, HAVE A NAP, THEN FIRE ZE MISSILES! 
+ 413.                    
+ 414.                             ;RISE OVER RUN 
+ 415.    131   000000             LDA#      0 
+ 416.    132   043000             STA       !0 
+ 417.                    
+ 418.    133   007007             LDA*      !7 
+ 419.    134   143005             SBA       !5 
+ 420.    135   043000             STA       !0 
+ 421.                    
+ 422.    136   003004              LDA       !4 ; 
+ 423.    137   147006              SBA*      !6 ;subtract turret position 
+ 424.    138   043001              STA       !1 
+ 425.    139   200000              CMA#      0 
+ 426.    13A   492141              JNE       SKIP ;skips vertical checker 
+ 427.    13B   203000             CMA      !0 
+ 428.    13C   48213E             JEQ       ASPLODE ;explodes. 
+ 429.    13D   492149             JNE       VERT 
+ 430.                    
+ 431.    13E   000002   ASPLODE:  LDA#      2 ;asplodie stage 
+ 432.    13F   042273             STA       STATE 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page   9
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 433.    140   402181             JMP       SHOTEND 
+ 434.                    
+ 435.                    
+ 436.                    
+ 437.    141   003000   SKIP:     LDA       !0 
+ 438.    142   193001             DIV       !1 ;gives rise over run 
+ 439.    143   4B2145             JGE       NONEG ;TAKE ABSOLUTE VALUE!!! 
+ 440.    144   FFF020             NEGA 
+ 441.    145   200001   NONEG:    CMA#      1 
+ 442.    146   4A216D             JLT       HORIZ 
+ 443.    147   482157             JEQ       ANGLE 
+ 444.    148   402149             JMP       VERT 
+ 445.                              
+ 446.    149   007007   VERT:     LDA*      !7 
+ 447.                            ; OUTB      CRT_YREG 
+ 448.    14A   140001             SBA#      1 
+ 449.    14B   200000             CMA#      0 
+ 450.    14C   48217F             JEQ       NEED_DIE 
+ 451.    14D   712315             OUTB      CRT_YREG 
+ 452.    14E   047007             STA*      !7 ;CUR_Y 
+ 453.    14F   007006             LDA*      !6 ;CUR_X 
+ 454.    150   712314             OUTB      CRT_XREG 
+ 455.    151   00002E             LDA#      '.' 
+ 456.    152   712317             OUTB      CRT_DATA 
+ 457.    153   000000             LDA#      0 
+ 458.    154   712315             OUTB      CRT_YREG 
+ 459.    155   712314             OUTB      CRT_XREG 
+ 460.    156   402181             JMP       SHOTEND 
+ 461.                    
+ 462.    157   007007   ANGLE:    LDA*      !7 
+ 463.    158   140001             SBA#      1 
+ 464.    159   200000             CMA#      0 
+ 465.    15A   48217F             JEQ       NEED_DIE 
+ 466.    15B   712315             OUTB      CRT_YREG 
+ 467.    15C   047007             STA*      !7; CUR_Y 
+ 468.                    
+ 469.    15D   003001             LDA       !1 
+ 470.    15E   200000             CMA#      0 
+ 471.    15F   4A2163             JLT       LANGLE 
+ 472.                    
+ 473.    160   007006             LDA*      !6 ; move x to the right 
+ 474.    161   100001             ADA#      1 
+ 475.    162   402165             JMP       ANGPRINT 
+ 476.                    
+ 477.    163   007006   LANGLE:   LDA*      !6 
+ 478.    164   140001             SBA#      1 
+ 479.                            
+ 480.    165   047006   ANGPRINT: STA*      !6 ;CUR_X 
+ 481.    166   712314             OUTB      CRT_XREG 
+ 482.    167   00002E             LDA#      '.' 
+ 483.    168   712317             OUTB      CRT_DATA 
+ 484.    169   000000             LDA#      0 
+ 485.    16A   712315             OUTB      CRT_YREG 
+ 486.    16B   712314             OUTB      CRT_XREG 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page  10
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 487.    16C   402181             JMP       SHOTEND 
+ 488.                    
+ 489.                    
+ 490.    16D   003001   HORIZ:    LDA       !1 
+ 491.    16E   200000             CMA#      0 
+ 492.    16F   4A2173             JLT       LHORIZ 
+ 493.                    
+ 494.    170   007006             LDA*      !6;x going right again... 
+ 495.    171   100001             ADA#      1 
+ 496.    172   402175             JMP       HPRINT 
+ 497.                    
+ 498.    173   007006   LHORIZ:   LDA*      !6; and x left here... 
+ 499.    174   140001             SBA#      1 
+ 500.                    
+ 501.    175   712314   HPRINT:   OUTB      CRT_XREG 
+ 502.    176   047006             STA*      !6 ;CUR_X 
+ 503.                    
+ 504.    177   007007             LDA*      !7 ;CUR_Y 
+ 505.    178   712315             OUTB      CRT_YREG 
+ 506.    179   00002E             LDA#      '.' 
+ 507.    17A   712317             OUTB      CRT_DATA 
+ 508.    17B   000000             LDA#      0 
+ 509.    17C   712315             OUTB      CRT_YREG 
+ 510.    17D   712314             OUTB      CRT_XREG 
+ 511.    17E   402181             JMP       SHOTEND 
+ 512.                    
+ 513.    17F   000001   NEED_DIE: LDA#      1 
+ 514.    180   402181             JMP       SHOTEND 
+ 515.                    
+ 516.                    
+ 517.    181   690002   SHOTEND:  FIN#      2 
+ 518.    182   FFF040             RTN 
+ 519.                    
+ 520.    183   680002   EXPLODE:  BGN#      2 
+ 521.                   ;         STATE = 8, OUT_X=7,  OUT_Y=6,  INCOM_X=5,  INCOM_Y=4 
+ 522.                             ; 
+ 523.    184   000000             LDA#      0 
+ 524.    185   043000             STA       !0; initialize flag 
+ 525.    186   043001             STA       !1 ;incomming hit flag (0 no hit, 1 hit: will return in accm) 
+ 526.                    
+ 527.    187   003007             LDA       !7 ;top star 
+ 528.    188   712314             OUTB      CRT_XREG 
+ 529.    189   003006             LDA       !6 
+ 530.    18A   140001             SBA#      1 
+ 531.    18B   200000             CMA#      0 
+ 532.    18C   482190             JEQ       CENTERL 
+ 533.    18D   712315             OUTB      CRT_YREG 
+ 534.    18E   00002A             LDA#      '*' 
+ 535.    18F   712317             OUTB      CRT_DATA 
+ 536.                    
+ 537.    190   003007   CENTERL:  LDA       !7 ;center row 
+ 538.    191   140001             SBA#      1 
+ 539.    192   200000             CMA#      0 
+ 540.    193   492196             JNE       CENTER 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page  11
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 541.    194   100001             ADA#      1 
+ 542.    195   043000             STA       !0 ; FLAG... don't print third star 
+ 543.    196   712314   CENTER:   OUTB      CRT_XREG 
+ 544.    197   003006             LDA       !6 
+ 545.    198   712315             OUTB      CRT_YREG 
+ 546.    199   00002A             LDA#      '*' 
+ 547.    19A   712317             OUTB      CRT_DATA 
+ 548.    19B   712317             OUTB      CRT_DATA 
+ 549.    19C   702314             INB       CRT_XREG 
+ 550.    19D   200026             CMA#      38 
+ 551.    19E   4D21A4             JGT       BOTTOM 
+ 552.    19F   003000             LDA       !0 
+ 553.    1A0   200000             CMA#      0 
+ 554.    1A1   4921A4             JNE       BOTTOM 
+ 555.    1A2   00002A             LDA#      '*' 
+ 556.    1A3   712317             OUTB      CRT_DATA 
+ 557.                    
+ 558.    1A4   003007   BOTTOM:   LDA       !7 ;bottom star 
+ 559.    1A5   712314             OUTB      CRT_XREG 
+ 560.    1A6   003006             LDA       !6 
+ 561.    1A7   100001             ADA#      1 
+ 562.    1A8   712315             OUTB      CRT_YREG 
+ 563.    1A9   20000E             CMA#      14 
+ 564.    1AA   4B21AD             JGE       EXEND 
+ 565.    1AB   00002A             LDA#      '*' 
+ 566.    1AC   712317             OUTB      CRT_DATA 
+ 567.                    
+ 568.    1AD   000003   EXEND:    LDA#      3 
+ 569.    1AE   047008             STA*      !8 
+ 570.    1AF   000000             LDA#      0 
+ 571.    1B0   712000             OUTB      KBD_CTRL 
+ 572.    1B1   712315             OUTB      CRT_YREG 
+ 573.    1B2   712314             OUTB      CRT_XREG 
+ 574.                    
+ 575.                   ;now check if a missile was hit (!1 will be 2 if both hit, 1 if one hit, and 0 if none hit. only want the 2) 
+ 576.                    
+ 577.    1B3   003007             LDA       !7 ;outx 
+ 578.    1B4   140001             SBA#      1 
+ 579.    1B5   203005             CMA       !5 
+ 580.    1B6   4D21BC             JGT       NO_X 
+ 581.    1B7   100002             ADA#      2 
+ 582.    1B8   203005             CMA       !5 
+ 583.    1B9   4A21BC             JLT       NO_X 
+ 584.    1BA   000001             LDA#      1 
+ 585.    1BB   043001             STA       !1 
+ 586.                    
+ 587.    1BC   003006   NO_X:     LDA       !6 ;check outy 
+ 588.    1BD   140001             SBA#      1 
+ 589.    1BE   203004             CMA       !4 
+ 590.    1BF   4D21C6             JGT       NO_Y 
+ 591.    1C0   100002             ADA#      2 
+ 592.    1C1   203004             CMA       !4 
+ 593.    1C2   4A21C6             JLT       NO_Y 
+ 594.    1C3   003001             LDA       !1 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page  12
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 595.    1C4   100001             ADA#      1 
+ 596.    1C5   043001             STA       !1 
+ 597.                    
+ 598.    1C6   003001   NO_Y:     LDA       !1 
+ 599.    1C7   200002             CMA#      2 ;if both coordinates were hit 
+ 600.    1C8   4921CF             JNE       NO_HIT 
+ 601.                             ;check corners 
+ 602.    1C9   003005             LDA       !5 
+ 603.    1CA   203007             CMA       !7 
+ 604.    1CB   4821D1             JEQ       HITTING 
+ 605.    1CC   003004             LDA       !4 
+ 606.    1CD   203006             CMA       !6 
+ 607.    1CE   4821D1             JEQ       HITTING 
+ 608.    1CF   000000   NO_HIT:   LDA#      0  
+ 609.    1D0   4021D2             JMP       HITTN_END 
+ 610.    1D1   000001   HITTING:   LDA#      1 
+ 611.    1D2   690002   HITTN_END: FIN#      2 
+ 612.    1D3   FFF040             RTN 
+ 613.                    
+ 614.    1D4   680001   MOVE_MISSILE: BGN#      1 ;acc: 1 if something hit, 0 if not hit. 
+ 615.                             ;3 IS INCOM_X, 4 IS INCOM_Y, 5 IS INCOM DIR 
+ 616.    1D5   000000             LDA#      0 
+ 617.    1D6   043000             STA       !0 ;is flag to see if turret is hit 
+ 618.    1D7   003005             LDA       !5 
+ 619.    1D8   200000             CMA#      0 
+ 620.    1D9   4821E8             JEQ       INCOM_RIGHT 
+ 621.                   ;INCOM_LEFT 
+ 622.    1DA   007003             LDA*      !3 
+ 623.    1DB   140001             SBA#      1 
+ 624.    1DC   047003             STA*      !3 
+ 625.    1DD   007004             LDA*      !4 
+ 626.    1DE   100001             ADA#      1 
+ 627.    1DF   047004             STA*      !4 
+ 628.    1E0   20000E             CMA#      14 
+ 629.    1E1   4B21F6             JGE       HIT 
+ 630.    1E2   712315             OUTB      CRT_YREG   
+ 631.    1E3   007003             LDA*      !3 
+ 632.    1E4   712314             OUTB      CRT_XREG 
+ 633.    1E5   00002F             LDA#       '/' 
+ 634.    1E6   712317             OUTB      CRT_DATA 
+ 635.    1E7   4021F8             JMP       ENDINCOM 
+ 636.    1E8   007003   INCOM_RIGHT: LDA*    !3 
+ 637.    1E9   100001             ADA#      1 
+ 638.    1EA   047003             STA*       !3 
+ 639.    1EB   007004             LDA*       !4 
+ 640.    1EC   100001             ADA#      1 
+ 641.    1ED   047004             STA*       !4 
+ 642.    1EE   20000E             CMA#      14 
+ 643.    1EF   4B21F6             JGE       HIT 
+ 644.    1F0   712315             OUTB      CRT_YREG 
+ 645.    1F1   007003             LDA*       !3 
+ 646.    1F2   712314             OUTB      CRT_XREG 
+ 647.    1F3   00005C             LDA#       92 ;'\' 
+ 648.    1F4   712317             OUTB      CRT_DATA 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page  13
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 649.    1F5   4021F8             JMP       ENDINCOM 
+ 650.                    
+ 651.    1F6   000001   HIT:      LDA#      1 
+ 652.    1F7   4021F9             JMP       FININCOM 
+ 653.                    
+ 654.    1F8   000000   ENDINCOM: LDA#      0 
+ 655.                    
+ 656.    1F9   690001   FININCOM: FIN#      1 
+ 657.    1FA   FFF040             RTN 
+ 658.                    
+ 659.    1FB   680000   RESTART_SHOT: BGN# 0 
+ 660.                             ;2 IS INCOM_X, 3 IS INCOM_Y, 4 IS INCOM_DIR, 5 IS SEED 
+ 661.                    
+ 662.    1FC   007004             LDA*      !4 
+ 663.    1FD   200000             CMA#      0 ;if going right 
+ 664.    1FE   48220C             JEQ       RESTART_RIGHT 
+ 665.    1FF   007003   RESTART_LEFT: LDA*  !3 
+ 666.    200   200000             CMA#      0 
+ 667.    201   482219             JEQ       DONE_ERASE 
+ 668.    202   140001             SBA#      1 
+ 669.    203   047003             STA*      !3 
+ 670.    204   712315             OUTB      CRT_YREG 
+ 671.    205   007002             LDA*      !2 
+ 672.    206   100001             ADA#      1 
+ 673.    207   047002             STA*      !2 
+ 674.    208   712314             OUTB      CRT_XREG 
+ 675.    209   000020             LDA#      ' ' 
+ 676.    20A   712317             OUTB      CRT_DATA 
+ 677.    20B   4021FF             JMP       RESTART_LEFT 
+ 678.                    
+ 679.                    
+ 680.    20C   007003   RESTART_RIGHT: LDA* !3 
+ 681.    20D   200000             CMA#      0 
+ 682.    20E   482219             JEQ       DONE_ERASE 
+ 683.    20F   140001             SBA#      1 
+ 684.    210   047003             STA*      !3 
+ 685.    211   712315             OUTB      CRT_YREG 
+ 686.    212   007002             LDA*      !2 
+ 687.    213   140001             SBA#      1 
+ 688.    214   047002             STA*      !2 
+ 689.    215   712314             OUTB      CRT_XREG 
+ 690.    216   000020             LDA#      ' ' 
+ 691.    217   712317             OUTB      CRT_DATA 
+ 692.    218   40220C             JMP       RESTART_RIGHT 
+ 693.                    
+ 694.    219   007005   DONE_ERASE: LDA*    !5 ;seed 
+ 695.    21A   180ADB             MUL#      2779 
+ 696.    21B   1007CD             ADA#      1997 
+ 697.    21C   1A0800             MOD#      2048 
+ 698.    21D   047005             STA*      !5 
+ 699.    21E   1A0003             MOD#      3 
+ 700.    21F   200000             CMA#      0 
+ 701.    220   482226             JEQ       RESHOOT 
+ 702.    221   00000D             LDA#      13 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page  14
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 703.    222   047003             STA*      !3 
+ 704.    223   000000             LDA#      0 
+ 705.    224   047002             STA*      !2 
+ 706.    225   402232             JMP       END_RESTART 
+ 707.    226   007005   RESHOOT:  LDA*      !5 
+ 708.    227   180ADB             MUL#      2779 
+ 709.    228   1007CD             ADA#      1997 
+ 710.    229   1A0800             MOD#      2048 
+ 711.    22A   1A0025             MOD#      37 
+ 712.    22B   047005             STA*      !5 ;restarts seed 
+ 713.    22C   047002             STA*      !2 ;restarts x value too! 
+ 714.    22D   200013             CMA#      19 
+ 715.    22E   4C2231             JLE       START_RIGHT 
+ 716.    22F   000001             LDA#      1 
+ 717.    230   402232             JMP       END_RESTART 
+ 718.                    
+ 719.    231   000000   START_RIGHT: LDA#   0 
+ 720.    232   047004   END_RESTART:  STA*      !4 
+ 721.                    
+ 722.    233   000000             LDA#      0 
+ 723.    234   712314             OUTB      CRT_XREG 
+ 724.    235   712315             OUTB      CRT_YREG 
+ 725.    236   690000             FIN# 0 
+ 726.    237   FFF040             RTN 
+ 727.                    
+ 728.    238   680002   REDRAW_MISSILE: BGN# 2 
+ 729.                             ;0 is copy of x, 1 is copy of y, 4 IS INCOM_X, 5 IS INCOM_Y, 6 IS INCOM_DIR 
+ 730.    239   003004             LDA       !4 
+ 731.    23A   043000             STA       !0 
+ 732.    23B   712314             OUTB      CRT_XREG 
+ 733.    23C   003005             LDA       !5 
+ 734.    23D   043001             STA       !1 
+ 735.    23E   712315             OUTB      CRT_YREG 
+ 736.                    
+ 737.    23F   003006             LDA       !6 
+ 738.    240   200000             CMA#      0 ;if going right 
+ 739.    241   48224F             JEQ       REDRAW_RIGHT 
+ 740.    242   00002F   REDRAW_LEFT: LDA#   '/' 
+ 741.    243   712317             OUTB      CRT_DATA 
+ 742.    244   003001             LDA   !1 
+ 743.    245   200000             CMA#      0 
+ 744.    246   48225C             JEQ       DONE_REDRAW 
+ 745.    247   140001             SBA#      1 
+ 746.    248   043001             STA       !1 
+ 747.    249   712315             OUTB      CRT_YREG 
+ 748.    24A   003000             LDA       !0 
+ 749.    24B   100001             ADA#      1 
+ 750.    24C   043000             STA       !0 
+ 751.    24D   712314             OUTB      CRT_XREG 
+ 752.    24E   402242             JMP       REDRAW_LEFT 
+ 753.                    
+ 754.                    
+ 755.    24F   00005C   REDRAW_RIGHT: LDA#  92 
+ 756.    250   712317             OUTB      CRT_DATA 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page  15
+ Filename: missile
+
+ LINE   ADDR  CONTENTS                                        SOURCE LINE
+
+ 757.    251   003001             LDA  !1 
+ 758.    252   200000             CMA#      0 
+ 759.    253   48225C             JEQ       DONE_REDRAW 
+ 760.    254   140001             SBA#      1 
+ 761.    255   043001             STA       !1 
+ 762.    256   712315             OUTB      CRT_YREG 
+ 763.    257   003000             LDA       !0 
+ 764.    258   140001             SBA#      1 
+ 765.    259   043000             STA       !0 
+ 766.    25A   712314             OUTB      CRT_XREG 
+ 767.    25B   40224F             JMP       REDRAW_RIGHT 
+ 768.                    
+ 769.    25C   000000   DONE_REDRAW: LDA#      0 
+ 770.    25D   712314             OUTB      CRT_XREG 
+ 771.    25E   712315             OUTB      CRT_YREG 
+ 772.    25F   690002             FIN# 2 
+ 773.    260   FFF040             RTN 
+ 774.                    
+ 775.                   ;variables 
+ 776.    261   000000   CUR_X:    .WORD     0 
+ 777.    262   000000   CUR_Y:    .WORD     0 
+ 778.    263   506C65   PROMPT:   .CHAR     'Please enter a seed', PROMPT_LEN 
+         264   617365
+         265   20656E
+         266   746572
+         267   206120
+         268   736565
+         269   642020
+ 779.    26A   000000   SEED:     .WORD     0 
+ 780.                   ;CUR_POS:  .WORD     0 
+ 781.    26B   030D40   DELAY:    .WORD     200000 
+ 782.    26C   000000   EXPTIME:  .WORD     0 
+ 783.    26D   000000   INCOMTIM: .WORD     0 ;MOD5 to get movement of enemies 
+ 784.    26E   000000   INCOM_X:  .WORD     0 
+ 785.    26F   000000   INCOM_Y:  .WORD     0 
+ 786.    270   000000   INCOM_DIR: .WORD     0 ;0 IS RIGHT, 1 IS LEFT 
+ 787.    271   000000   OUT_X:    .WORD     0 
+ 788.    272   000000   OUT_Y:    .WORD     0 
+ 789.                    
+ 790.    273   000000   STATE:    .WORD     0 ;0=AIM, 1=FIRE, 2=EXPLODE, 3=EXPLODING 
+ 791.    274   000000   TURSLOPE: .WORD     0 ;if positive, shoot right, neg shoots left. note: vertial issues with division 
+ 792.    275   000000   CURRKEY:  .WORD     0 ;current keystroke we're dealing with in KSR 
+ 793.    276   000020   TEMPCHAR: .WORD     32 
+ 794.                    
+ 795.                             .EQU      @,$FFB    ; timer interrupt vector 
+ 796.    FFB   00003B             .WORD     TISR       ; set vector interrupt to TISR 
+ 797.                    
+ 798.                             .EQU      @,$FF8 
+ 799.    FF8   00009E             .WORD     KISR 
+
+ CHASM - CUSP Assembler 01:01:01 Monday Jan. 1st,    1  Page  16
+ Filename: missile
+
+                          SYMBOL TABLE CONTENTS
+
+  GET_NUM = 000E01         PUT_NUM = 000E00         PUT_NL = 000E06
+  PUT_STR = 000E05         PUT_NUM2 = 000E07        TIM_CNTL = 000030
+  TIM_STAT = 000030        TIM_VALUE = 000031       TIM_COUNT = 000034
+  INTERRUPT_ENA = 000080   RESET_READY_BIT = 000040
+  START_AFTER_LOAD = 000010
+  ENABLE_RESET_AND_START = 0000D0                   ENABLE_AND_RESET = 0000C0
+  CRT_BUFFER = 000100      CRT_XREG = 000314        CRT_YREG = 000315
+  CRT_CTRL = 000316        CRT_DATA = 000317        CRT_COLS = 000026
+  CLEAR_DISPLAY = 000001   KBD_DATA = 000001        KBD_CTRL = 000000
+  STATE = 000273           CURRKEY = 000275         INCOM_DIR = 000270
+  INCOMTIM = 00026D        OUT_X = 000271           OUT_Y = 000272
+  INCOM_Y = 00026F         TEMPCHAR = 000276        PROMPT_LEN = 000013
+  PROMPT = 000263          SEED = 00026A            INCOM_X = 00026E
+  INITR = 00001F           DELAY = 00026B           CUR_Y = 000262
+  CUR_X = 000261           DO_WORK = 000039         TISR = 00003B
+  NOINMOV = 00004F         MOVE_MISSILE = 0001D4    NOHIT = 00004E
+  RESTART_SHOT = 0001FB    BANG = 00006C            TEND = 000086
+  SHOOT = 000130           NOFRIEND = 000081        DONEBANG = 000062
+  WIPE = 00008A            EXPTIME = 00026C         EXPLODE = 000183
+  REDRAW_MISSILE = 000238  KISR = 00009E            NOQUIT = 0000A8
+  KEND = 0000CB            DTEST = 0000B1           FIRE = 000120
+  DOS = 0000B8             KTEST = 0000B3           AIMING = 0000C6
+  DLEFT = 0000BC           DRIGHT = 0000BF          DDOWN = 0000C2
+  AIM = 0000CF             UP = 0000D9              LEFT = 0000E9
+  RIGHT = 0000F6           DOWN = 000101            AIMEND = 00011E
+  APRINT = 000110          SKIP = 000141            ASPLODE = 00013E
+  VERT = 000149            SHOTEND = 000181         NONEG = 000145
+  HORIZ = 00016D           ANGLE = 000157           NEED_DIE = 00017F
+  LANGLE = 000163          ANGPRINT = 000165        LHORIZ = 000173
+  HPRINT = 000175          CENTERL = 000190         CENTER = 000196
+  BOTTOM = 0001A4          EXEND = 0001AD           NO_X = 0001BC
+  NO_Y = 0001C6            NO_HIT = 0001CF          HITTING = 0001D1
+  HITTN_END = 0001D2       INCOM_RIGHT = 0001E8     HIT = 0001F6
+  ENDINCOM = 0001F8        FININCOM = 0001F9        RESTART_RIGHT = 00020C
+  RESTART_LEFT = 0001FF    DONE_ERASE = 000219      RESHOOT = 000226
+  END_RESTART = 000232     START_RIGHT = 000231     REDRAW_RIGHT = 00024F
+  REDRAW_LEFT = 000242     DONE_REDRAW = 00025C     TURSLOPE = 000274
+
+  Number of Warning Lines:   0
+  Number of Error Lines:   0
+
+  <<<  End of Program Listing   >>>

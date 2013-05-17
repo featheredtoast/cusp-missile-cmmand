@@ -1,0 +1,227 @@
+;Authors:  Donovan Carrillo and Jeff Wong
+          .EQU      @,$0 ;defines starting point
+          .EQU      GET_NUM, $E01
+          .EQU      PUT_NUM, $E00
+          .EQU      PUT_NL, $E06
+          .EQU      PUT_STR, $E05
+          .EQU      PUT_NUM2, $E07
+          .EQU      GET_STR, $E04
+          .EQU      PUT_CHAR, $E08
+          LDS#      $E00
+          
+
+START:    LDA#      0
+          TAX
+          STA       MAXLEN
+          STA       STRLEN
+          STA       LETTER
+          STA       LETLEN
+          ;STA       TMPSTR
+
+          PSH#      PROMPT1_LEN
+          PSH#      PROMPT1
+          JSR       PUT_STR
+          ADS#      2
+
+          PSH#      MAXLEN
+          PSH#      STRING
+          PSH#      STRLEN
+          JSR       GET_STR    
+          ADS#      3
+          
+          LDA#      0
+          LDC       STRING ;exiting
+          CMA       EX
+          JEQ       DONE
+
+           LDA       STRLEN
+           CMA#      0
+           JNE       NEWP
+          LDA#      0
+          STA       STRING
+           ;copy
+;          LDX#      0
+;CPYSTR:   LDC       TMPSTR
+;          STC       STRING
+;          AOC       STRLEN 
+;          JLT       CPYSTR
+
+NEWP:     PSH#      PROMPT2_LEN
+          PSH#      PROMPT2
+          JSR       PUT_STR
+          ADS#      2
+
+          LDA#      0
+          PSH#      3
+          PSH#      LETTER
+          PSH#      LETLEN
+          JSR       GET_STR
+          ADS#      3
+          LDA       LETTER
+          DIV       SHIFT
+          STA       LETTER
+
+;          SBS#      2
+          PSH#      STRING ;6
+          PSH       STRLEN ;5
+          PSH       LETTER ;4
+          JSR       STRTOK
+          ADS#      1
+
+;          PSH       STRLEN
+;          PSH#      STRING
+;          JSR       PUT_STR
+;          ADS#      2
+
+          JMP       START
+          
+DONE:     HLT
+
+
+;HEREIN LIES STRTOK!!!
+;abandon hope all ye who enter here.
+
+;4 = LETTER, 5 = &STRLEN, 6 = &STRING , 7= OLDLEN, 8 = OLDSTR (IF EXISTS)
+; 0 = COUNT, 1 = ITERATOR
+STRTOK:   BGN#      2
+          LDA#      !8
+          CMA#      $E00
+          JGE        FIRST
+          ;we know we have old stuff now! :D
+
+          LDA*      !6; STRING
+          CMA#      $00
+          JEQ       OLDSTR
+          ;now we've called strtok(NULL,...)
+          LDA       !6
+          STA       !8
+          LDA       !5
+          STA       !7
+          JMP       CONT
+
+OLDSTR:   ;moves everything forward one word
+          LDA       !7;LEN
+          DIV#      3
+          ADA#      1
+          STA       !1 ; TEMP
+          LDX#      1
+RSFTLOOP: LDA&      !8; STRING (pre-shifted)
+          SBX#      1
+          STA&      !8
+          ADX#      1
+          AOC       !1
+          JLT       RSFTLOOP
+
+CONT:     LDA       !4
+          STA       !6
+          LDA       !3
+          STA       !5
+          LDA       !2
+          STA       !4
+          LDA       !1
+          STA       !3
+          LDA       !0
+          STA       !2
+          ADS#      2
+          TSF
+;so now !4 is still the letter, !5 is STRLEN, !6 = &STRING
+;0 is counter, 1 iterator
+FIRST:    LDA       ! 5; STRLEN
+          CMA#      0
+          JEQ       STRDONE
+          LDX#      0
+          LDC*      !6; STRING
+          CMA       !4
+          JNE       NOTFIRST
+          LDA#      0
+          STC*      !6;
+          STA       !1
+          LDA#      0
+
+MOVE:     ADX#      1
+          LDC*      !6; STRING +1
+          SBX#      1
+          STC*      !6; STRING
+          AOC       !5
+          JNE       MOVE
+
+          LDA       !5
+          SBA#      1
+          STA       !5
+          LDX#      0
+          AOC       !5; STRLEN
+          JEQ       STRDONE
+          JMP       REPEAT
+
+NOTFIRST: LDX#      0
+          LDC*      !6
+          JSR       PUT_CHAR
+          LDA       !5; LEN
+          CMA#      1
+          JEQ       DEATHLOOP
+          LDX#      1
+          STX       !0; COUNT
+
+REPEAT:   LDC*      !6; STRING
+          CMA       !4; LETTER
+          JEQ       REMOVE
+          JSR       PUT_CHAR
+          AOC       !5; LENGTH
+          STX       !0; COUNT
+          JLT       REPEAT
+          LDA       NEG1
+          JMP       STRDONE
+
+REMOVE:   LDA#      0
+          STA       !1
+          STC*      !6; STRING
+          TAX
+          LDA       !5; LEN
+          SBA       !0; COUNT
+          STA       !5; remaining length
+          LDA       !0
+          STA       !1
+ 
+DEATHLOOP: LDA#      0 
+           INC       !1
+         ; SBA#       1
+         ; STA       !1
+MINILOP:  ADX      !1
+          LDC*      !6; STRING +1
+          SBX       !1
+          STC*      !6; STRING
+          AOC       !5
+          JNE       MINILOP
+;moves everything forward one word
+          DEC       !1
+          LDA       !5;LEN
+          DIV#      3
+          ADA#      1
+          STA       !1 ; TEMP
+          TAX
+SFTLOOP:  LDA&      !6; STRING (pre-shifted)
+          ADX#      1
+          STA&      !6
+          SBX#      1
+          SOJ       SFTLOOP
+
+STRDONE:  JSR       PUT_NL
+          LDA      !0
+          FIN#      2
+          RTN
+
+
+
+
+;declare variables
+PROMPT1:  .CHAR     'String', PROMPT1_LEN
+PROMPT2:  .CHAR     'Letter', PROMPT2_LEN
+MAXLEN:   .WORD     0
+STRLEN:   .WORD     0
+STRING:   .BLKW     100
+LETTER:   .WORD     0
+LETLEN:   .WORD     0
+NEG1:     .WORD     -1
+SHIFT:    .WORD     $10000
+EX:       .WORD     $58
+TMPSTR:   .BLKW     100,0
